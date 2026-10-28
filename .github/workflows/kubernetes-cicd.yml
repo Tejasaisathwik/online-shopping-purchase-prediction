@@ -14,13 +14,11 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: tejasaisathwik/online-shopping-purchase-prediction
+  DOCKERHUB_IMAGE: teja211/online-shopping-prediction
 
 jobs:
   build-test-push:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+    runs-on: self-hosted
     outputs:
       image_ref: ${{ steps.image.outputs.image_ref }}
     steps:
@@ -29,52 +27,84 @@ jobs:
 
       - name: Create immutable image reference
         id: image
+        shell: powershell
         run: |
-          echo "image_ref=${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          $shortSha = $env:GITHUB_SHA.Substring(0, 7)
+          $imageRef = "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$shortSha"
+          Write-Host "image_ref=$imageRef"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "image_ref=$imageRef"
+
+      - name: Clean previous test containers
+        shell: powershell
+        run: |
+          docker rm -f online-shopping-test 2>$null | Out-Null
+          exit 0
 
       - name: Build Docker image for testing
+        shell: powershell
         run: |
           docker build -t online-shopping-prediction:test .
 
       - name: Start test container
+        shell: powershell
         run: |
           docker run -d --name online-shopping-test -p 8000:8000 online-shopping-prediction:test
 
       - name: Wait for health endpoint
+        shell: powershell
         run: |
-          for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:8000/health; then
-              echo "Container health test passed"
-              exit 0
-            fi
-            sleep 2
-          done
-          docker logs online-shopping-test
-          exit 1
+          $passed = $false
+          for ($i = 1; $i -le 30; $i++) {
+            try {
+              $resp = Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -Method Get -TimeoutSec 2
+              if ($resp.status -eq "healthy") {
+                Write-Host "Container health test passed: $($resp | ConvertTo-Json -Compress)"
+                $passed = $true
+                break
+              }
+            } catch {
+              Start-Sleep -Seconds 2
+            }
+          }
+          if (-not $passed) {
+            docker logs online-shopping-test
+            exit 1
+          }
 
       - name: Run automated unit tests
+        shell: powershell
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install -r requirements.txt
           python -m unittest discover -v -s tests
 
       - name: Stop test container
         if: always()
-        run: docker rm -f online-shopping-test || true
-
-      - name: Log in to GitHub Container Registry
+        shell: powershell
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker rm -f online-shopping-test 2>$null | Out-Null
+          exit 0
 
-      - name: Tag tested image
+      - name: Tag tested image for GHCR and Docker Hub
+        shell: powershell
         run: |
-          docker tag online-shopping-prediction:test ${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA::7}
-          docker tag online-shopping-prediction:test ${REGISTRY}/${IMAGE_NAME}:latest
+          $shortSha = $env:GITHUB_SHA.Substring(0, 7)
+          docker tag online-shopping-prediction:test "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$shortSha"
+          docker tag online-shopping-prediction:test "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          docker tag online-shopping-prediction:test "${{ env.DOCKERHUB_IMAGE }}:sha-$shortSha"
+          docker tag online-shopping-prediction:test "${{ env.DOCKERHUB_IMAGE }}:latest"
+          docker tag online-shopping-prediction:test "${{ env.DOCKERHUB_IMAGE }}:practical-14"
 
-      - name: Push tested image to GHCR
+      - name: Publish image to GHCR and Docker Hub
+        shell: powershell
         run: |
-          docker push ${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA::7}
-          docker push ${REGISTRY}/${IMAGE_NAME}:latest
+          $shortSha = $env:GITHUB_SHA.Substring(0, 7)
+          Write-Host "Pushing to GHCR..."
+          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$shortSha"
+          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          Write-Host "Pushing to Docker Hub..."
+          docker push "${{ env.DOCKERHUB_IMAGE }}:sha-$shortSha"
+          docker push "${{ env.DOCKERHUB_IMAGE }}:practical-14"
 
   deploy-kubernetes:
     needs: build-test-push
