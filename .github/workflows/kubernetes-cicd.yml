@@ -48,17 +48,17 @@ jobs:
       - name: Start test container
         shell: powershell
         run: |
-          docker run -d --name online-shopping-test -p 8000:8000 online-shopping-prediction:test
+          docker run -d --name online-shopping-test online-shopping-prediction:test
 
-      - name: Wait for health endpoint
+      - name: Wait for container health endpoint
         shell: powershell
         run: |
           $passed = $false
           for ($i = 1; $i -le 30; $i++) {
             try {
-              $resp = Invoke-RestMethod -Uri "http://127.0.0.1:8000/health" -Method Get -TimeoutSec 2
-              if ($resp.status -eq "healthy") {
-                Write-Host "Container health test passed: $($resp | ConvertTo-Json -Compress)"
+              $resp = docker exec online-shopping-test python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read().decode())"
+              if ($resp -match '"healthy"') {
+                Write-Host "Container health test passed: $resp"
                 $passed = $true
                 break
               }
@@ -99,10 +99,10 @@ jobs:
         shell: powershell
         run: |
           $shortSha = $env:GITHUB_SHA.Substring(0, 7)
-          Write-Host "Pushing to GHCR..."
+          Write-Host "Publishing to GHCR..."
           docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$shortSha"
           docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          Write-Host "Pushing to Docker Hub..."
+          Write-Host "Publishing to Docker Hub..."
           docker push "${{ env.DOCKERHUB_IMAGE }}:sha-$shortSha"
           docker push "${{ env.DOCKERHUB_IMAGE }}:practical-14"
 
