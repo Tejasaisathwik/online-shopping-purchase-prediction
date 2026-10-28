@@ -13,7 +13,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: tejasaisathwik/online-shopping-prediction
+  IMAGE_NAME: tejasaisathwik/online-shopping-purchase-prediction
 
 jobs:
   build-test-push:
@@ -89,12 +89,14 @@ jobs:
       - name: Show current deployment image
         shell: powershell
         run: |
+          Write-Host "Current deployment image:"
           kubectl get deployment online-shopping-prediction -o jsonpath='{.spec.template.spec.containers[0].image}'
           Write-Host ""
 
       - name: Deploy the tested image
         shell: powershell
         run: |
+          Write-Host "Deploying tested image: ${{ needs.build-test-push.outputs.image_ref }}"
           kubectl set image deployment/online-shopping-prediction online-shopping-api=${{ needs.build-test-push.outputs.image_ref }}
 
       - name: Wait for Kubernetes rollout
@@ -108,9 +110,25 @@ jobs:
           kubectl get deployment online-shopping-prediction -o wide
           kubectl get pods -o wide
 
+      - name: Verify post-deployment health
+        shell: powershell
+        run: |
+          $podName = (kubectl get pods -l app=online-shopping-prediction -o jsonpath='{.items[0].metadata.name}')
+          Write-Host "Verifying health on deployed pod $podName..."
+          kubectl exec $podName -- python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read().decode())"
+
+      - name: Verify post-deployment prediction
+        shell: powershell
+        run: |
+          $podName = (kubectl get pods -l app=online-shopping-prediction -o jsonpath='{.items[0].metadata.name}')
+          Write-Host "Verifying prediction on deployed pod $podName..."
+          $testScript = "import urllib.request, json; data = json.dumps({'Age':30,'Gender':'Female','MonthlyIncome':50000,'WebsiteVisits':5,'PagesViewed':10,'TimeSpentMinutes':20,'PreviousPurchases':2,'CartItems':3,'DiscountUsed':'Yes','DeviceType':'Mobile','Membership':'Gold','CustomerRating':4.5,'PurchaseAmount':150.0}).encode(); req = urllib.request.Request('http://127.0.0.1:8000/predict', data=data, headers={'Content-Type':'application/json'}); print(urllib.request.urlopen(req).read().decode())"
+          kubectl exec $podName -- python -c "$testScript"
+
       - name: Roll back if deployment verification fails
         if: failure()
         shell: powershell
         run: |
+          Write-Host "Deployment or verification failed! Initiating automatic rollback..."
           kubectl rollout undo deployment/online-shopping-prediction
           kubectl rollout status deployment/online-shopping-prediction --timeout=180s

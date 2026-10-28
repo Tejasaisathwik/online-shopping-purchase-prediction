@@ -1,5 +1,8 @@
 FROM python:3.11-slim
 
+LABEL org.opencontainers.image.source="https://github.com/tejasaisathwik/online-shopping-purchase-prediction"
+LABEL org.opencontainers.image.description="Online Shopping Purchase Prediction API"
+
 WORKDIR /app
 
 COPY requirements.txt .
