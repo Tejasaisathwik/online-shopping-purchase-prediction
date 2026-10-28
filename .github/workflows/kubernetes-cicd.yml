@@ -1,0 +1,116 @@
+name: Online Shopping Prediction - Kubernetes CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - practical-14-automated-deployment
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: tejasaisathwik/online-shopping-purchase-prediction
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_ref: ${{ steps.image.outputs.image_ref }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create immutable image reference
+        id: image
+        run: |
+          echo "image_ref=${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Docker image for testing
+        run: |
+          docker build -t online-shopping-prediction:test .
+
+      - name: Start test container
+        run: |
+          docker run -d --name online-shopping-test -p 8000:8000 online-shopping-prediction:test
+
+      - name: Wait for health endpoint
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:8000/health; then
+              echo "Container health test passed"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs online-shopping-test
+          exit 1
+
+      - name: Run automated unit tests
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m unittest discover -v -s tests
+
+      - name: Stop test container
+        if: always()
+        run: docker rm -f online-shopping-test || true
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag tested image
+        run: |
+          docker tag online-shopping-prediction:test ${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA::7}
+          docker tag online-shopping-prediction:test ${REGISTRY}/${IMAGE_NAME}:latest
+
+      - name: Push tested image to GHCR
+        run: |
+          docker push ${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA::7}
+          docker push ${REGISTRY}/${IMAGE_NAME}:latest
+
+  deploy-kubernetes:
+    needs: build-test-push
+    runs-on: self-hosted
+    steps:
+      - name: Verify Kubernetes cluster
+        shell: powershell
+        run: |
+          kubectl config current-context
+          kubectl get nodes
+
+      - name: Show current deployment image
+        shell: powershell
+        run: |
+          kubectl get deployment online-shopping-prediction -o jsonpath='{.spec.template.spec.containers[0].image}'
+          Write-Host ""
+
+      - name: Deploy the tested image
+        shell: powershell
+        run: |
+          kubectl set image deployment/online-shopping-prediction online-shopping-api=${{ needs.build-test-push.outputs.image_ref }}
+
+      - name: Wait for Kubernetes rollout
+        shell: powershell
+        run: |
+          kubectl rollout status deployment/online-shopping-prediction --timeout=180s
+
+      - name: Show deployed image and Pods
+        shell: powershell
+        run: |
+          kubectl get deployment online-shopping-prediction -o wide
+          kubectl get pods -o wide
+
+      - name: Roll back if deployment verification fails
+        if: failure()
+        shell: powershell
+        run: |
+          kubectl rollout undo deployment/online-shopping-prediction
+          kubectl rollout status deployment/online-shopping-prediction --timeout=180s
