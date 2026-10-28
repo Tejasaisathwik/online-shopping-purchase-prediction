@@ -1,8 +1,11 @@
 import os
+import sys
 import unittest
-import pandas as pd
 
-from src.model import load_data, build_model
+# Ensure project root is in sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from src.model import build_model, load_data
 
 
 class TestOnlineShoppingDataset(unittest.TestCase):
@@ -12,6 +15,7 @@ class TestOnlineShoppingDataset(unittest.TestCase):
             os.path.exists(
                 "data/online_shopping_purchase_prediction.csv"
             )
+            or os.path.exists("online_shopping.csv")
         )
 
     def test_dataset_not_empty(self):
@@ -28,7 +32,6 @@ class TestOnlineShoppingDataset(unittest.TestCase):
 
     def test_target_values(self):
         df = load_data()
-
         self.assertTrue(
             set(df["Purchased"].dropna().unique()).issubset({0, 1})
         )

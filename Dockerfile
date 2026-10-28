@@ -1,11 +1,12 @@
-FROM python:3.13-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
 COPY online_shopping_model.joblib .
 COPY app.py .
-
-RUN pip install --no-cache-dir pandas numpy scikit-learn joblib fastapi uvicorn
 
 EXPOSE 8000
 
