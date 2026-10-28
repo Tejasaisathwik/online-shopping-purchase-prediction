@@ -149,11 +149,12 @@ jobs:
           for ($i = 1; $i -le 15; $i++) {
             Start-Sleep -Seconds 3
             try {
-              $podName = (kubectl get pods -l app=online-shopping-prediction --field-selector status.phase=Running -o jsonpath='{.items[0].metadata.name}')
-              if ($podName) {
-                $resp = kubectl exec $podName -- python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read().decode())"
+              $targetPod = (kubectl get pods -l app=online-shopping-prediction --field-selector status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+              if ($targetPod) {
+                $resp = kubectl exec $targetPod -- python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read().decode())"
                 if ($resp -match '"healthy"') {
-                  Write-Host "Post-deployment health check passed on $podName: $resp"
+                  Write-Host "Post-deployment health check passed on $targetPod"
+                  Write-Host "Response: $resp"
                   $healthy = $true
                   break
                 }
@@ -170,10 +171,10 @@ jobs:
       - name: Verify post-deployment prediction
         shell: powershell
         run: |
-          $podName = (kubectl get pods -l app=online-shopping-prediction --field-selector status.phase=Running -o jsonpath='{.items[0].metadata.name}')
-          Write-Host "Verifying prediction on deployed pod $podName..."
+          $targetPod = (kubectl get pods -l app=online-shopping-prediction --field-selector status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          Write-Host "Verifying prediction on deployed pod $targetPod..."
           $testScript = "import urllib.request, json; data = json.dumps({'Age':30,'Gender':'Female','MonthlyIncome':50000,'WebsiteVisits':5,'PagesViewed':10,'TimeSpentMinutes':20,'PreviousPurchases':2,'CartItems':3,'DiscountUsed':'Yes','DeviceType':'Mobile','Membership':'Gold','CustomerRating':4.5,'PurchaseAmount':150.0}).encode(); req = urllib.request.Request('http://127.0.0.1:8000/predict', data=data, headers={'Content-Type':'application/json'}); print(urllib.request.urlopen(req).read().decode())"
-          kubectl exec $podName -- python -c "$testScript"
+          kubectl exec $targetPod -- python -c "$testScript"
 
       - name: Roll back if deployment verification fails
         if: failure()
