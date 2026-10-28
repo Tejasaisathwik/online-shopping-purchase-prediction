@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - practical-14-automated-deployment
+      - practical-15-drift-retraining
   workflow_dispatch:
 
 permissions:
@@ -92,9 +93,10 @@ jobs:
           $shortSha = $env:GITHUB_SHA.Substring(0, 7)
           docker tag online-shopping-prediction:test "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$shortSha"
           docker tag online-shopping-prediction:test "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          docker tag online-shopping-prediction:test "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:practical-15"
           docker tag online-shopping-prediction:test "${{ env.DOCKERHUB_IMAGE }}:sha-$shortSha"
           docker tag online-shopping-prediction:test "${{ env.DOCKERHUB_IMAGE }}:latest"
-          docker tag online-shopping-prediction:test "${{ env.DOCKERHUB_IMAGE }}:practical-14"
+          docker tag online-shopping-prediction:test "${{ env.DOCKERHUB_IMAGE }}:practical-15"
 
       - name: Publish image to GHCR and Docker Hub
         shell: powershell
@@ -102,10 +104,11 @@ jobs:
           $shortSha = $env:GITHUB_SHA.Substring(0, 7)
           Write-Host "Publishing to GHCR..."
           docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$shortSha"
+          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:practical-15"
           docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
           Write-Host "Publishing to Docker Hub..."
           docker push "${{ env.DOCKERHUB_IMAGE }}:sha-$shortSha"
-          docker push "${{ env.DOCKERHUB_IMAGE }}:practical-14"
+          docker push "${{ env.DOCKERHUB_IMAGE }}:practical-15"
 
   deploy-kubernetes:
     needs: build-test-push
