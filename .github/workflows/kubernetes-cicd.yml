@@ -13,11 +13,14 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: tejasaisathwik/online-shopping-purchase-prediction
+  IMAGE_NAME: tejasaisathwik/online-shopping-prediction
 
 jobs:
   build-test-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     outputs:
       image_ref: ${{ steps.image.outputs.image_ref }}
     steps:
@@ -59,12 +62,9 @@ jobs:
         if: always()
         run: docker rm -f online-shopping-test || true
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Tag tested image
         run: |
