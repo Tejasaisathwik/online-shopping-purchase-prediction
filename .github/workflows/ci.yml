@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - practical-12-monitoring
+      - practical-13-kubernetes
   pull_request:
     branches:
       - main
@@ -37,10 +38,14 @@ jobs:
   build-and-publish:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/practical-12-monitoring'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/practical-12-monitoring' || github.ref == 'refs/heads/practical-13-kubernetes'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set lower case repository name
+        run: |
+          echo "IMAGE_NAME=ghcr.io/$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -58,5 +63,6 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:practical-12
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:practical-12
+            ${{ env.IMAGE_NAME }}:practical-13
