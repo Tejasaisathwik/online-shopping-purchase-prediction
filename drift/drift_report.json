@@ -1,0 +1,80 @@
+{
+  "method": "two-sample KS test (Kolmogorov-Smirnov)",
+  "p_value_threshold": 0.05,
+  "min_drifted_features": 2,
+  "drifted_feature_count": 6,
+  "drifted_features": [
+    "Age",
+    "MonthlyIncome",
+    "WebsiteVisits",
+    "PagesViewed",
+    "TimeSpentMinutes",
+    "CustomerRating"
+  ],
+  "overall_drift": true,
+  "features": {
+    "Age": {
+      "ks_statistic": 0.264353,
+      "p_value": 0.0,
+      "drift_detected": true,
+      "reference_mean": 38.939,
+      "current_mean": 31.1133
+    },
+    "MonthlyIncome": {
+      "ks_statistic": 0.279264,
+      "p_value": 0.0,
+      "drift_detected": true,
+      "reference_mean": 81719.8055,
+      "current_mean": 52587.341
+    },
+    "WebsiteVisits": {
+      "ks_statistic": 0.182355,
+      "p_value": 0.000303,
+      "drift_detected": true,
+      "reference_mean": 15.5857,
+      "current_mean": 11.6733
+    },
+    "PagesViewed": {
+      "ks_statistic": 0.324206,
+      "p_value": 0.0,
+      "drift_detected": true,
+      "reference_mean": 10.8433,
+      "current_mean": 6.3667
+    },
+    "TimeSpentMinutes": {
+      "ks_statistic": 0.27632,
+      "p_value": 0.0,
+      "drift_detected": true,
+      "reference_mean": 30.7287,
+      "current_mean": 18.5213
+    },
+    "PreviousPurchases": {
+      "ks_statistic": 0.046961,
+      "p_value": 0.922636,
+      "drift_detected": false,
+      "reference_mean": 7.6614,
+      "current_mean": 7.5667
+    },
+    "CartItems": {
+      "ks_statistic": 0.092555,
+      "p_value": 0.202579,
+      "drift_detected": false,
+      "reference_mean": 4.9285,
+      "current_mean": 5.46
+    },
+    "CustomerRating": {
+      "ks_statistic": 0.363849,
+      "p_value": 0.0,
+      "drift_detected": true,
+      "reference_mean": 2.9522,
+      "current_mean": 1.9693
+    },
+    "PurchaseAmount": {
+      "ks_statistic": 0.07735,
+      "p_value": 0.397689,
+      "drift_detected": false,
+      "reference_mean": 5004.1209,
+      "current_mean": 4724.8603
+    }
+  }
+}

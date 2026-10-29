@@ -1,0 +1,188 @@
+name: Online Shopping Prediction - Kubernetes CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - practical-14-automated-deployment
+      - practical-15-drift-retraining
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: tejasaisathwik/online-shopping-purchase-prediction
+  DOCKERHUB_IMAGE: teja211/online-shopping-prediction
+
+jobs:
+  build-test-push:
+    runs-on: self-hosted
+    outputs:
+      image_ref: ${{ steps.image.outputs.image_ref }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create immutable image reference
+        id: image
+        shell: powershell
+        run: |
+          $shortSha = $env:GITHUB_SHA.Substring(0, 7)
+          $imageRef = "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$shortSha"
+          Write-Host "image_ref=$imageRef"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "image_ref=$imageRef"
+
+      - name: Clean previous test containers
+        shell: powershell
+        run: |
+          docker rm -f online-shopping-test 2>$null | Out-Null
+          exit 0
+
+      - name: Build Docker image for testing
+        shell: powershell
+        run: |
+          docker build -t online-shopping-prediction:test .
+
+      - name: Start test container
+        shell: powershell
+        run: |
+          docker run -d --name online-shopping-test online-shopping-prediction:test
+
+      - name: Wait for container health endpoint
+        shell: powershell
+        run: |
+          $passed = $false
+          for ($i = 1; $i -le 30; $i++) {
+            Start-Sleep -Seconds 2
+            try {
+              $resp = docker exec online-shopping-test python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read().decode())"
+              if ($resp -match '"healthy"') {
+                Write-Host "Container health test passed: $resp"
+                $passed = $true
+                break
+              }
+            } catch {
+              Write-Host "Waiting for container startup... (attempt $i)"
+            }
+          }
+          if (-not $passed) {
+            docker logs online-shopping-test
+            exit 1
+          }
+
+      - name: Run automated unit tests
+        shell: powershell
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m unittest discover -v -s tests
+
+      - name: Stop test container
+        if: always()
+        shell: powershell
+        run: |
+          docker rm -f online-shopping-test 2>$null | Out-Null
+          exit 0
+
+      - name: Tag tested image for GHCR and Docker Hub
+        shell: powershell
+        run: |
+          $shortSha = $env:GITHUB_SHA.Substring(0, 7)
+          docker tag online-shopping-prediction:test "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$shortSha"
+          docker tag online-shopping-prediction:test "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          docker tag online-shopping-prediction:test "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:practical-15"
+          docker tag online-shopping-prediction:test "${{ env.DOCKERHUB_IMAGE }}:sha-$shortSha"
+          docker tag online-shopping-prediction:test "${{ env.DOCKERHUB_IMAGE }}:latest"
+          docker tag online-shopping-prediction:test "${{ env.DOCKERHUB_IMAGE }}:practical-15"
+
+      - name: Publish image to GHCR and Docker Hub
+        shell: powershell
+        run: |
+          $shortSha = $env:GITHUB_SHA.Substring(0, 7)
+          Write-Host "Publishing to GHCR..."
+          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-$shortSha"
+          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:practical-15"
+          docker push "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          Write-Host "Publishing to Docker Hub..."
+          docker push "${{ env.DOCKERHUB_IMAGE }}:sha-$shortSha"
+          docker push "${{ env.DOCKERHUB_IMAGE }}:practical-15"
+
+  deploy-kubernetes:
+    needs: build-test-push
+    runs-on: self-hosted
+    steps:
+      - name: Verify Kubernetes cluster
+        shell: powershell
+        run: |
+          kubectl config current-context
+          kubectl get nodes
+
+      - name: Show current deployment image
+        shell: powershell
+        run: |
+          Write-Host "Current deployment image:"
+          kubectl get deployment online-shopping-prediction -o jsonpath='{.spec.template.spec.containers[0].image}'
+          Write-Host ""
+
+      - name: Deploy the tested image
+        shell: powershell
+        run: |
+          Write-Host "Deploying tested image: ${{ needs.build-test-push.outputs.image_ref }}"
+          kubectl set image deployment/online-shopping-prediction online-shopping-api=${{ needs.build-test-push.outputs.image_ref }}
+
+      - name: Wait for Kubernetes rollout
+        shell: powershell
+        run: |
+          kubectl rollout status deployment/online-shopping-prediction --timeout=180s
+
+      - name: Show deployed image and Pods
+        shell: powershell
+        run: |
+          kubectl get deployment online-shopping-prediction -o wide
+          kubectl get pods -o wide
+
+      - name: Verify post-deployment health
+        shell: powershell
+        run: |
+          Write-Host "Verifying health on deployed pod..."
+          $healthy = $false
+          for ($i = 1; $i -le 15; $i++) {
+            Start-Sleep -Seconds 3
+            try {
+              $targetPod = (kubectl get pods -l app=online-shopping-prediction --field-selector status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+              if ($targetPod) {
+                $resp = kubectl exec $targetPod -- python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read().decode())"
+                if ($resp -match '"healthy"') {
+                  Write-Host "Post-deployment health check passed on $targetPod"
+                  Write-Host "Response: $resp"
+                  $healthy = $true
+                  break
+                }
+              }
+            } catch {
+              Write-Host "Waiting for pod startup and model initialization... (attempt $i)"
+            }
+          }
+          if (-not $healthy) {
+            Write-Host "Post-deployment health verification failed!"
+            exit 1
+          }
+
+      - name: Verify post-deployment prediction
+        shell: powershell
+        run: |
+          $targetPod = (kubectl get pods -l app=online-shopping-prediction --field-selector status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+          Write-Host "Verifying prediction on deployed pod $targetPod..."
+          $testScript = "import urllib.request, json; data = json.dumps({'Age':30,'Gender':'Female','MonthlyIncome':50000,'WebsiteVisits':5,'PagesViewed':10,'TimeSpentMinutes':20,'PreviousPurchases':2,'CartItems':3,'DiscountUsed':'Yes','DeviceType':'Mobile','Membership':'Gold','CustomerRating':4.5,'PurchaseAmount':150.0}).encode(); req = urllib.request.Request('http://127.0.0.1:8000/predict', data=data, headers={'Content-Type':'application/json'}); print(urllib.request.urlopen(req).read().decode())"
+          kubectl exec $targetPod -- python -c "$testScript"
+
+      - name: Roll back if deployment verification fails
+        if: failure()
+        shell: powershell
+        run: |
+          Write-Host "Deployment or verification failed! Initiating automatic rollback..."
+          kubectl rollout undo deployment/online-shopping-prediction
+          kubectl rollout status deployment/online-shopping-prediction --timeout=180s

@@ -1,0 +1,7 @@
+{
+  "candidate_accuracy": 0.76087,
+  "training_rows": 920,
+  "test_rows": 230,
+  "historical_rows": 1000,
+  "recent_labeled_rows": 150
+}
