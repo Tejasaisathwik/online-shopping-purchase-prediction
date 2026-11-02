@@ -1,0 +1,10 @@
+feature,reference_mean,current_mean,psi,flag_for_review
+Age,39.11,55.1,5.7777,True
+MonthlyIncome,81897.21,32497.31,8.4879,True
+WebsiteVisits,15.25,3.48,8.8485,True
+PagesViewed,10.5,2.58,8.9537,True
+TimeSpentMinutes,30.66,6.48,9.2982,True
+PreviousPurchases,7.56,0.67,9.7515,True
+CartItems,4.99,0.67,8.8624,True
+CustomerRating,2.98,1.88,5.681,True
+PurchaseAmount,4958.58,652.39,11.0524,True
