@@ -1,0 +1,10 @@
+.venv
+venv
+__pycache__
+*.pyc
+.git
+.github
+.pytest_cache
+logs/*.jsonl
+reports/*.html
+reports/*.csv

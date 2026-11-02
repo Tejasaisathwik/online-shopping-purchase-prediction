@@ -1,87 +1,117 @@
-import pandas as pd
+"""Train reproducible machine learning model for Online Shopping Purchase Prediction.
+Saves model artifact and reference feature dataset for drift monitoring.
+"""
+from pathlib import Path
 import joblib
-
-from sklearn.model_selection import train_test_split
+import pandas as pd
 from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.impute import SimpleImputer
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
 
-# Load dataset
-df = pd.read_csv("online_shopping.csv")
+ROOT = Path(__file__).resolve().parent
 
-print("Dataset shape:", df.shape)
-print("\nColumns:")
-print(df.columns.tolist())
+NUMERICAL_FEATURES = [
+    "Age",
+    "MonthlyIncome",
+    "WebsiteVisits",
+    "PagesViewed",
+    "TimeSpentMinutes",
+    "PreviousPurchases",
+    "CartItems",
+    "CustomerRating",
+    "PurchaseAmount",
+]
 
-# Separate features and target
-X = df.drop("Purchased", axis=1)
-y = df["Purchased"]
+CATEGORICAL_FEATURES = [
+    "Gender",
+    "DiscountUsed",
+    "DeviceType",
+    "Membership",
+]
 
-# Identify categorical and numerical columns
-categorical_columns = X.select_dtypes(include=["object"]).columns.tolist()
-numerical_columns = X.select_dtypes(exclude=["object"]).columns.tolist()
+ALL_FEATURES = NUMERICAL_FEATURES + CATEGORICAL_FEATURES
+TARGET = "Purchased"
 
-print("\nCategorical columns:", categorical_columns)
-print("Numerical columns:", numerical_columns)
 
-# Numerical preprocessing
-numeric_pipeline = Pipeline([
-    ("imputer", SimpleImputer(strategy="median")),
-    ("scaler", StandardScaler())
-])
+def load_dataset():
+    paths = [
+        ROOT / "data" / "online_shopping.csv",
+        ROOT / "online_shopping.csv",
+        Path("c:/Users/Dell/Downloads/online_shopping.csv"),
+    ]
+    for p in paths:
+        if p.exists():
+            return pd.read_csv(p)
+    raise FileNotFoundError("online_shopping.csv not found in data/ or root directory.")
 
-# Categorical preprocessing
-categorical_pipeline = Pipeline([
-    ("imputer", SimpleImputer(strategy="most_frequent")),
-    ("encoder", OneHotEncoder(handle_unknown="ignore"))
-])
 
-# Combine preprocessing
-preprocessor = ColumnTransformer([
-    ("num", numeric_pipeline, numerical_columns),
-    ("cat", categorical_pipeline, categorical_columns)
-])
+def build_pipeline():
+    numeric_pipeline = Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", StandardScaler()),
+    ])
 
-# Random Forest model
-model = RandomForestClassifier(
-    n_estimators=100,
-    random_state=42
-)
+    categorical_pipeline = Pipeline([
+        ("imputer", SimpleImputer(strategy="most_frequent")),
+        ("encoder", OneHotEncoder(handle_unknown="ignore")),
+    ])
 
-# Complete pipeline
-pipeline = Pipeline([
-    ("preprocessor", preprocessor),
-    ("model", model)
-])
+    preprocessor = ColumnTransformer([
+        ("num", numeric_pipeline, NUMERICAL_FEATURES),
+        ("cat", categorical_pipeline, CATEGORICAL_FEATURES),
+    ])
 
-# Split dataset
-X_train, X_test, y_train, y_test = train_test_split(
-    X,
-    y,
-    test_size=0.20,
-    random_state=42,
-    stratify=y
-)
+    clf = Pipeline([
+        ("preprocessor", preprocessor),
+        ("classifier", LogisticRegression(max_iter=1500, random_state=42)),
+    ])
+    return clf
 
-print("\nTraining model...")
 
-# Train
-pipeline.fit(X_train, y_train)
+def main():
+    (ROOT / "models").mkdir(parents=True, exist_ok=True)
+    (ROOT / "data").mkdir(parents=True, exist_ok=True)
 
-# Predict
-y_pred = pipeline.predict(X_test)
+    df = load_dataset()
+    print(f"Loaded dataset shape: {df.shape}")
 
-# Evaluate
-accuracy = accuracy_score(y_test, y_pred)
+    X = df[ALL_FEATURES]
+    y = df[TARGET]
 
-print("\nAccuracy:", accuracy)
-print("\nClassification Report:")
-print(classification_report(y_test, y_pred))
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.20, random_state=42, stratify=y
+    )
 
-# Save model
-joblib.dump(pipeline, "online_shopping_model.joblib")
+    clf = build_pipeline()
+    clf.fit(X_train, y_train)
 
-print("\nModel saved as online_shopping_model.joblib")
+    y_pred = clf.predict(X_test)
+    acc = round(accuracy_score(y_test, y_pred), 4)
+    print("Hold-out accuracy:", acc)
+    print("\nClassification report:")
+    print(classification_report(y_test, y_pred, target_names=["Not Purchased", "Purchased"]))
+
+    artifact = {
+        "model": clf,
+        "features": ALL_FEATURES,
+        "numerical_features": NUMERICAL_FEATURES,
+        "categorical_features": CATEGORICAL_FEATURES,
+        "version": "demo-v1",
+        "accuracy": acc,
+    }
+
+    joblib.dump(artifact, ROOT / "models" / "online_shopping_model.joblib")
+    joblib.dump(artifact, ROOT / "models" / "student_result.joblib")
+    joblib.dump(clf, ROOT / "online_shopping_model.joblib")
+
+    X_train.to_csv(ROOT / "data" / "reference_data.csv", index=False)
+    print(f"Saved reference dataset to {ROOT / 'data' / 'reference_data.csv'} ({len(X_train)} samples)")
+    print("Saved model artifacts to models/online_shopping_model.joblib and models/student_result.joblib")
+
+
+if __name__ == "__main__":
+    main()

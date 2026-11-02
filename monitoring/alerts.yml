@@ -1,0 +1,20 @@
+groups:
+  - name: mlops-latency-alerts
+    rules:
+      - alert: HighPredictionLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(ml_http_request_duration_seconds_bucket{path="/predict"}[5m]))) > 0.5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Prediction Latency"
+          description: "Approximate P95 prediction latency has exceeded 500 ms for more than 1 minute."
+
+      - alert: ShoppingAPIDown
+        expr: up{job="student_result_api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API monitoring target is DOWN"
+          description: "Prometheus cannot scrape api:8000/metrics."
